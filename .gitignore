@@ -1,0 +1,11 @@
+# Personal configuration (channel layout, VM IP, cal file path)
+mac/dv_measure.ini
+# Script backups created by patches
+*.bak*
+# Python
+__pycache__/
+*.pyc
+# macOS
+.DS_Store
+# Measurement output
+*.mdat
