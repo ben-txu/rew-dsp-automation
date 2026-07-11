@@ -75,11 +75,53 @@ class Config:
     channel_types:    dict[str, str] = field(default_factory=dict)
     types:            dict[str, dict] = field(default_factory=dict)
     mic_cal_file:     Optional[Path] = None
+    mic_cal_clear:    bool = False
+    pairs:            dict[str, dict] = field(default_factory=dict)
+    branches:         dict[str, dict] = field(default_factory=dict)
     source_file:      Optional[Path] = None
 
     @property
     def callback_url(self) -> str:
         return f"http://127.0.0.1:{self.callback_port}"
+
+
+def _parse_groups(cp, section: str, channels: dict, types: dict,
+                  ini_path) -> dict:
+    """Parses [pairs]/[branches]: name = member[, member...][, type].
+    A trailing token that names a defined type sets the group's
+    measurement type explicitly."""
+    groups: dict[str, dict] = {}
+    if not cp.has_section(section):
+        return groups
+    for gname, gval in cp.items(section):
+        tokens = [x.strip() for x in gval.split(",") if x.strip()]
+        gtype, members = None, []
+        for tok in tokens:
+            tl = tok.lower()
+            if tl in types and tok not in channels:
+                if gtype:
+                    sys.exit(f"Config error: [{section}] {gname}: more than "
+                             f"one type given ({ini_path})")
+                gtype = tl
+            elif tok in channels:
+                if tok in members:
+                    sys.exit(f"Config error: [{section}] {gname}: duplicate "
+                             f"member '{tok}' ({ini_path})")
+                if channels[tok] > 16:
+                    sys.exit(f"Config error: [{section}] {gname}: channel "
+                             f"'{tok}' is DSP {channels[tok]} — mute toggles "
+                             f"only exist for channels 1–16 ({ini_path})")
+                members.append(tok)
+            else:
+                sys.exit(f"Config error: [{section}] {gname}: '{tok}' is "
+                         f"neither a channel nor a type — commented-out "
+                         f"channels cannot be group members; use --only "
+                         f"instead of commenting out ({ini_path})")
+        if not members:
+            sys.exit(f"Config error: [{section}] {gname}: no member "
+                     f"channels ({ini_path})")
+        groups[gname] = {"members": members, "type": gtype}
+    return groups
 
 
 def config_search_paths(cli_path: Optional[str]) -> list[Path]:
@@ -116,16 +158,19 @@ def load_config(cli_path: Optional[str]) -> Config:
     if cp.has_section("types"):
         for tname, tval in cp.items("types"):
             parts = [x.strip() for x in tval.split(",")]
-            if len(parts) != 2 or not parts[0]:
+            if len(parts) not in (2, 3) or not parts[0]:
                 sys.exit(f"Config error: [types] {tname} = '{tval}' — "
-                         f"expected 'FFT, averages' (e.g. 64k, 128)")
+                         f"expected 'FFT, averages[, signal]' "
+                         f"(e.g. 64k, 128, pinkpn)")
             try:
                 t_avg = int(parts[1])
             except ValueError:
                 sys.exit(f"Config error: [types] {tname}: averages "
                          f"'{parts[1]}' is not a number ({ini_path})")
-            types[tname.strip().lower()] = {"fft": parts[0],
-                                            "averages": t_avg}
+            t_entry = {"fft": parts[0], "averages": t_avg}
+            if len(parts) == 3 and parts[2]:
+                t_entry["signal"] = parts[2]
+            types[tname.strip().lower()] = t_entry
 
     # Channels: "number[, type]"
     channels: dict[str, int] = {}
@@ -160,8 +205,13 @@ def load_config(cli_path: Optional[str]) -> Config:
     if conflicts:
         sys.exit(f"Config error: DSP channels assigned more than once: {conflicts}")
 
-    mic_cal_raw = get("calibration", "mic_cal_file", "")
-    mic_cal = Path(mic_cal_raw).expanduser() if mic_cal_raw.strip() else None
+    pairs    = _parse_groups(cp, "pairs", channels, types, ini_path)
+    branches = _parse_groups(cp, "branches", channels, types, ini_path)
+
+    mic_cal_raw = get("calibration", "mic_cal_file", "").strip()
+    mic_cal_clear = mic_cal_raw.lower() == "none"
+    mic_cal = (Path(mic_cal_raw).expanduser()
+               if mic_cal_raw and not mic_cal_clear else None)
 
     try:
         cfg = Config(
@@ -177,7 +227,7 @@ def load_config(cli_path: Optional[str]) -> Config:
             rta_default_avg = int(get("rta", "default_averages", "64")),
             rta_fft_length  = get("rta", "fft_length", "64k"),
             rta_mode        = get("rta", "mode", "1/48 octave"),
-            rta_signal      = get("rta", "generator_signal", "Pink PN"),
+            rta_signal      = get("rta", "generator_signal", "pinkpn"),
             rta_use_generator = (get("rta", "use_generator", "true")
                                  .strip().lower() in ("1", "true", "yes", "on")),
             rta_timeout_s   = float(get("rta", "timeout_s", "300")),
@@ -186,6 +236,9 @@ def load_config(cli_path: Optional[str]) -> Config:
             channel_types   = channel_types,
             types           = types,
             mic_cal_file    = mic_cal,
+            mic_cal_clear   = mic_cal_clear,
+            pairs           = pairs,
+            branches        = branches,
             source_file     = ini_path,
         )
     except ValueError as e:
@@ -261,6 +314,30 @@ def ask_confirm_all_muted() -> bool:
     return choice == "Yes"
 
 
+def ask_scope(cfg: Config) -> str:
+    """individual / pairs / branches — only asked when groups exist."""
+    opts = ["individual"]
+    if cfg.pairs:
+        opts.append("pairs")
+    if cfg.branches:
+        opts.append("branches")
+    if len(opts) == 1:
+        return "individual"
+    if sys.stdin.isatty():
+        labels = " / ".join(f"[{o[0]}]{o[1:]}" for o in opts)
+        ans = input(f"Scope — {labels}? [i]: ").strip().lower()
+        for o in opts:
+            if ans.startswith(o[0]):
+                return o
+        return "individual"
+    btns = ["Cancel"] + [o.capitalize() for o in opts]
+    c = osa_choice("Measure individual channels or groups?", btns,
+                   "Individual")
+    if c in (None, "Cancel"):
+        sys.exit(0)
+    return c.lower()
+
+
 def ask_mode() -> str:
     if sys.stdin.isatty():
         ans = input("Measurement mode — [s]weep or [r]ta? [s]: ").strip().lower()
@@ -270,6 +347,131 @@ def ask_mode() -> str:
     if choice in (None, "Cancel"):
         sys.exit(0)
     return choice.lower()
+
+
+def group_settings(cfg: Config, g: dict, avg_override):
+    """FFT/averages/signal for a group: explicit type token → uniform
+    member type → [rta] defaults."""
+    t = g["type"]
+    if t is None:
+        mtypes = {cfg.channel_types.get(m) for m in g["members"]}
+        if len(mtypes) == 1 and None not in mtypes:
+            t = mtypes.pop()
+    if t:
+        ti = cfg.types[t]
+        return (ti["fft"], avg_override or ti["averages"],
+                ti.get("signal", cfg.rta_signal), t)
+    return (cfg.rta_fft_length, avg_override or cfg.rta_default_avg,
+            cfg.rta_signal, None)
+
+
+def resolve_group_targets(groups: dict, only_arg) -> Optional[dict]:
+    if not only_arg:
+        return dict(groups)
+    by_lower = {k.lower(): k for k in groups}
+    out = {}
+    for token in (t.strip() for t in only_arg.split(",")):
+        if not token:
+            continue
+        if token.lower() not in by_lower:
+            log.error("Unknown group '%s'. Available: %s",
+                      token, list(groups))
+            return None
+        name = by_lower[token.lower()]
+        out[name] = groups[name]
+    if not out:
+        log.error("--only matched no groups.")
+        return None
+    return out
+
+
+def run_group_scope(rew: "Rew", cfg: Config, args, mode: str,
+                    session: str, scope: str) -> int:
+    groups = cfg.pairs if scope == "pairs" else cfg.branches
+    if not groups:
+        log.error("No [%s] defined in the config.", scope)
+        return 1
+    targets = resolve_group_targets(groups, args.only)
+    if targets is None:
+        return 1
+
+    plan = {}
+    for gname, g in targets.items():
+        fft, avg, sig, gt = group_settings(cfg, g, args.averages)
+        plan[gname] = (fft, avg, sig)
+        gen = f"  sig={sig}" if cfg.rta_use_generator else ""
+        log.info("  %-12s → %s | FFT %-5s %4d Averages%s%s",
+                 gname, "+".join(g["members"]), fft, avg,
+                 f"  [{gt}]" if gt else "", gen)
+
+    server = CallbackServer(cfg.callback_port)
+    threading.Thread(target=server.run, daemon=True).start()
+    time.sleep(0.4)
+
+    # Ensure no solo is active and the confirmed baseline holds
+    mute_all_channels(cfg)
+    time.sleep(cfg.dsp_settle_s)
+
+    failures: list[str] = []
+    for gname, g in targets.items():
+        fft, avg, sig = plan[gname]
+        name = build_name(cfg, session=session, channel=gname, mode=mode)
+        log.info("→ %s  (DSP ch %s, %s)", name,
+                 "+".join(str(cfg.channels[m]) for m in g["members"]), mode)
+        unmuted: list[str] = []
+        try:
+            for m in g["members"]:
+                toggle_mute_channel(cfg, cfg.channels[m])
+                unmuted.append(m)
+                time.sleep(0.15)
+            time.sleep(cfg.dsp_settle_s)
+            if mode == "sweep":
+                do_sweep(rew, cfg, name, server)
+            else:
+                configure_rta(rew, cfg, avg, fft)
+                do_rta(rew, cfg, name, avg, sig, fft)
+        except Exception as e:
+            log.error("  %s failed: %s — continuing", name, e)
+            failures.append(gname)
+        finally:
+            for m in unmuted:
+                try:
+                    toggle_mute_channel(cfg, cfg.channels[m])
+                    time.sleep(0.15)
+                except Exception as e:
+                    log.error("  re-mute of %s failed: %s — CHECK the DSP "
+                              "state before trusting the next group!", m, e)
+                    failures.append(f"{gname}:re-mute")
+
+    if not args.no_save:
+        if not rew.measurement_uuids():
+            log.info("No measurements to save — skipping .mdat export.")
+        else:
+            try:
+                save_all(rew, build_output_path(cfg, session))
+            except Exception as e:
+                log.error("Saving the session file failed: %s — "
+                          "measurements are still in REW, save manually.", e)
+                notify("Speaker Measurement — error",
+                       "Session save failed — save manually in REW.")
+
+    if not args.no_final_mute:
+        try:
+            mute_all_channels(cfg)
+            log.info("All DSP channels muted.")
+        except Exception as e:
+            log.warning("Final mute-all failed: %s — please "
+                        "mute manually in DSP PC-Tool.", e)
+
+    if failures:
+        notify("Speaker Measurement — finished with errors",
+               f"Failed: {', '.join(failures)}")
+        log.warning("Finished, but with failures: %s", failures)
+    else:
+        notify("Speaker Measurement",
+               f"All {len(targets)} groups measured ({mode}).")
+        log.info("Done — all %d groups OK.", len(targets))
+    return 0
 
 
 def handle_existing_measurements(rew: "Rew", choice) -> bool:
@@ -355,6 +557,21 @@ def bridge_health(cfg: Config) -> bool:
         return requests.get(f"{cfg.solo_bridge}/health", timeout=3).ok
     except requests.RequestException:
         return False
+
+
+def toggle_mute_channel(cfg: Config, n: int) -> None:
+    """Toggle a single channel's mute flag via the bridge (channels 1–16).
+    Only deterministic from a known state — group runs enforce the
+    all-muted baseline via mute_all_channels() first."""
+    r = requests.get(f"{cfg.solo_bridge}/toggle-mute/{n}", timeout=10)
+    if not r.ok:
+        detail = ""
+        try:
+            detail = r.json().get("error", "")
+        except ValueError:
+            pass
+        raise RuntimeError(f"toggle-mute ch{n} failed: "
+                           f"HTTP {r.status_code} {detail}")
 
 
 def mute_all_channels(cfg: Config) -> None:
@@ -561,6 +778,126 @@ def configure_rta(rew: Rew, cfg: Config, target_averages: int,
     })
 
 
+def clear_mic_cal(rew: "Rew") -> bool:
+    """mic_cal_file = none → ensure REW measures WITHOUT a cal file."""
+    try:
+        data = rew.call("GET", "/audio/input-cal")
+    except Exception as e:
+        log.error("Calibration not verifiable (%s) — aborting.", e)
+        return False
+    slots: list = []
+
+    def _cal_slots(obj):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if (isinstance(v, str) and "cal" in k.lower()
+                        and "file" in k.lower()):
+                    slots.append((obj, k))
+                else:
+                    _cal_slots(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                _cal_slots(v)
+
+    _cal_slots(data)
+    if not slots:
+        log.info("No cal file field found — assuming no calibration loaded.")
+        return True
+    if all(parent[key] == "" for parent, key in slots):
+        log.info("No mic calibration loaded (as configured).")
+        return True
+    for parent, key in slots:
+        parent[key] = ""
+    try:
+        rew.call("PUT", "/audio/input-cal", json=data)
+    except Exception as e:
+        log.error("Clearing the mic calibration failed: %s", e)
+        return False
+    log.info("Mic calibration cleared — measuring without a cal file.")
+    return True
+
+
+_GEN_CACHE: dict = {}
+
+
+def _gen_command(rew: "Rew", cmd: str) -> None:
+    """POST a generator command. The REW docs are ambiguous about the
+    path (/generator/command vs /generator/commands) — try both, then
+    remember which one worked."""
+    paths = _GEN_CACHE.get("cmd_paths",
+                           ["/generator/command", "/generator/commands"])
+    last = None
+    for path in paths:
+        try:
+            rew.call("POST", path, json={"command": cmd})
+            _GEN_CACHE["cmd_paths"] = [path]
+            return
+        except Exception as e:
+            last = e
+    raise RuntimeError(f"generator command '{cmd}' failed: {last}")
+
+
+def _pick_command(commands, preferred, keywords):
+    for c in preferred:
+        if c in commands:
+            return c
+    for c in commands:
+        if any(k in str(c).lower() for k in keywords):
+            return c
+    return None
+
+
+def start_generator(rew: "Rew", signal: str,
+                    fft_length: Optional[str]) -> None:
+    """Select the signal, best-effort match its periodic length to the
+    RTA FFT, then start the generator."""
+    try:
+        rew.call("POST", "/generator/signal", json={"signal": signal})
+    except Exception:
+        rew.call("POST", "/generator/signal", json=signal)
+
+    if fft_length:
+        try:
+            conf = rew.call("GET", "/generator/signal/configuration")
+            keys = [k for k, v in (conf or {}).items()
+                    if "length" in k.lower() and isinstance(v, (str, int))]
+            if len(keys) == 1:
+                rew.call("PUT", "/generator/signal/configuration",
+                         json={keys[0]: fft_length})
+                log.debug("generator %s set to %s", keys[0], fft_length)
+            else:
+                log.debug("no unique generator length key (candidates: %s) "
+                          "— set the PN length once in the generator panel",
+                          keys)
+        except Exception as e:
+            log.debug("could not match generator length to FFT: %s", e)
+
+    if "start" not in _GEN_CACHE:
+        cmds = []
+        try:
+            cmds = rew.call("GET", "/generator/commands") or []
+        except Exception as e:
+            log.debug("generator command list not readable: %s", e)
+        if isinstance(cmds, dict):
+            cmds = list(cmds.values())
+        _GEN_CACHE["start"] = (_pick_command(cmds, ["Play", "Start"],
+                                             ["play", "start"]) or "Play")
+        _GEN_CACHE["stop"] = (_pick_command(cmds, ["Stop"], ["stop"])
+                              or "Stop")
+        if cmds:
+            log.debug("generator commands %s → start=%s stop=%s",
+                      cmds, _GEN_CACHE["start"], _GEN_CACHE["stop"])
+    _gen_command(rew, _GEN_CACHE["start"])
+
+
+def stop_generator(rew: "Rew") -> None:
+    try:
+        _gen_command(rew, _GEN_CACHE.get("stop", "Stop"))
+    except Exception as e:
+        log.warning("Generator stop failed: %s — stop it manually in REW.",
+                    e)
+
+
 def rta_running(rew: Rew) -> Optional[bool]:
     """True/False from /rta/status, None if unreadable."""
     try:
@@ -575,12 +912,13 @@ def rta_running(rew: Rew) -> Optional[bool]:
     return None
 
 
-def do_rta(rew: Rew, cfg: Config, name: str, target_averages: int) -> None:
+def do_rta(rew: Rew, cfg: Config, name: str, target_averages: int,
+           signal: Optional[str] = None,
+           fft_length: Optional[str] = None) -> None:
     before = rew.measurement_uuids()
 
     if cfg.rta_use_generator:
-        rew.call("POST", "/generator/command",
-                 json={"command": "Play", "signal": cfg.rta_signal})
+        start_generator(rew, signal or cfg.rta_signal, fft_length)
     rew.call("POST", "/rta/command", json={"command": "Start"})
 
     t0 = time.time()
@@ -599,7 +937,7 @@ def do_rta(rew: Rew, cfg: Config, name: str, target_averages: int) -> None:
             stopped = True
             break
     if stopped:
-        log.info("  RTA stopped (target averages reached)")
+        log.info("  RTA stopped")
     else:
         log.warning("  RTA did not stop by itself within %.0fs – stopping "
                     "manually and saving anyway", cfg.rta_timeout_s)
@@ -607,7 +945,7 @@ def do_rta(rew: Rew, cfg: Config, name: str, target_averages: int) -> None:
 
     rew.call("POST", "/rta/command", json={"command": "Save current"})
     if cfg.rta_use_generator:
-        rew.call("POST", "/generator/command", json={"command": "Stop"})
+        stop_generator(rew)
     rew.rename_new_measurements(before, name)
     log.info("  RTA snapshot saved: %s", name)
 
@@ -638,6 +976,10 @@ def parse_args():
                    help="Skip muting all DSP channels at the end")
     p.add_argument("--assume-muted", action="store_true",
                    help="Skip the all-channels-muted confirmation")
+    p.add_argument("--scope",
+                   choices=["individual", "pairs", "branches"],
+                   help="Measure single channels or groups "
+                        "(asked at startup when groups are defined)")
     p.add_argument("--existing", choices=["keep", "delete"],
                    help="How to handle pre-existing REW measurements "
                         "(skips the prompt)")
@@ -719,7 +1061,12 @@ def main() -> int:
         return 1
     log.info("Solo-Bridge OK: %s", cfg.solo_bridge)
 
-    if cfg.mic_cal_file is not None and not ensure_mic_cal(rew, cfg):
+    if cfg.mic_cal_clear:
+        if not clear_mic_cal(rew):
+            notify("Speaker Measurement — error",
+                   "Could not clear mic calibration — run aborted.")
+            return 1
+    elif cfg.mic_cal_file is not None and not ensure_mic_cal(rew, cfg):
         notify("Speaker Measurement — error",
                "Mic calibration not loaded — run aborted.")
         return 1
@@ -736,11 +1083,15 @@ def main() -> int:
         return 1
 
     mode = args.mode or ask_mode()
+    scope = args.scope or ask_scope(cfg)
     session = args.session or ask_text(
         "Session label (e.g. PreEQ_Driver)",
         default=datetime.now().strftime("%Y%m%d_%H%M"),
     )
-    log.info("Mode: %s | Session: %s", mode, session)
+    log.info("Mode: %s | Scope: %s | Session: %s", mode, scope, session)
+
+    if scope != "individual":
+        return run_group_scope(rew, cfg, args, mode, session, scope)
 
     # ── Channel selection ────────────────────────────────────────────────────
     targets = resolve_targets(cfg, args.only)
@@ -773,12 +1124,15 @@ def main() -> int:
                 ti = cfg.types[t]
                 fft = ti["fft"]
                 avg = args.averages or ti["averages"]
+                sig = ti.get("signal", cfg.rta_signal)
             else:
                 fft = cfg.rta_fft_length
                 avg = target_averages
-            plan[n] = (fft, avg)
-            log.info("  %-12s → FFT %-5s %4d Averages%s",
-                     n, fft, avg, f"  [{t}]" if t else "")
+                sig = cfg.rta_signal
+            plan[n] = (fft, avg, sig)
+            gen = f"  sig={sig}" if cfg.rta_use_generator else ""
+            log.info("  %-12s → FFT %-5s %4d Averages%s%s",
+                     n, fft, avg, f"  [{t}]" if t else "", gen)
 
     # ── Callback-Server + REW vorbereiten ────────────────────────────────────
     server = CallbackServer(cfg.callback_port)
@@ -799,15 +1153,24 @@ def main() -> int:
             if mode == "sweep":
                 do_sweep(rew, cfg, name, server)
             else:
-                fft, avg = plan[channel_name]
+                fft, avg, sig = plan[channel_name]
                 configure_rta(rew, cfg, avg, fft)
-                do_rta(rew, cfg, name, avg)
+                do_rta(rew, cfg, name, avg, sig, fft)
         except Exception as e:
             log.error("  %s failed: %s — continuing", name, e)
             failures.append(channel_name)
 
     if not args.no_save:
-        save_all(rew, build_output_path(cfg, session))
+        if not rew.measurement_uuids():
+            log.info("No measurements to save — skipping .mdat export.")
+        else:
+            try:
+                save_all(rew, build_output_path(cfg, session))
+            except Exception as e:
+                log.error("Saving the session file failed: %s — "
+                          "measurements are still in REW, save manually.", e)
+                notify("Speaker Measurement — error",
+                       "Session save failed — save manually in REW.")
 
     if not args.no_final_mute:
         try:

@@ -30,6 +30,11 @@ fine.
 
 - **One-button multi-channel runs** — RTA or sweep, all channels or a subset
   (`--only FL_Tweeter` / `--only 1,2,9`)
+- **Group measurements** — define `[pairs]` (e.g. both tweeters) and
+  `[branches]` (e.g. a full three-way side) in the config; groups are
+  measured by unmuting their members from the all-muted baseline instead
+  of soloing (channels 1–16 only, since mute hotkeys stop there).
+  Select the scope at startup or via `--scope pairs|branches`
 - **Per-type measurement settings** — assign each channel a type
   (tweeter/mid/woofer/…), each type gets its own FFT length and target
   average count
@@ -47,8 +52,16 @@ fine.
 - **Idempotent solo switching** — the AutoHotkey side is safe against the
   Solo hotkey's toggle behaviour and against ControlSend's modifier loss
   (both learned the hard way; see Troubleshooting)
-- **External or internal test signal** — use REW's generator, or play pink
-  noise from the head unit (`use_generator = false`)
+- **External or internal test signal** — play pink noise from the head
+  unit (`use_generator = false`), or let the script drive REW's signal
+  generator: signal selectable globally (`generator_signal`) or per
+  channel type (third field in `[types]`), with a best-effort attempt to
+  match periodic-noise length to the channel's FFT. The generator path is
+  adaptive (command names are read from the API) but *less field-tested*
+  than the external-signal path — check `curl localhost:4735/generator/signals`
+  for your build's exact signal names (compact identifiers like `pinkpn`, not display names)
+- **Calibration modes** — `mic_cal_file` accepts a path (enforce), empty
+  (don't touch), or `none` (enforce measuring without a cal file)
 - **Safe end state** — the script asks you to confirm an *all-muted*
   baseline at startup (skip with `--assume-muted`); exiting solo mode
   restores the underlying mute flags, so the run ends silent

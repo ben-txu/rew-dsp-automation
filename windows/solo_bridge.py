@@ -4,11 +4,12 @@ solo_bridge.py — HTTP → AutoHotkey bridge (runs INSIDE the Windows VM)
 ──────────────────────────────────────────────────────────────────────
 Endpoints:
     GET /health        → {"status": "ok"}
-    GET /solo/<n>      → solos DSP channel n (1–20)
-    GET /mute-all      → mutes all DSP channels
+    GET /solo/<n>        → solos DSP channel n (1–20)
+    GET /toggle-mute/<n> → toggles mute of channel n (1–16)
+    GET /mute-all        → restores the all-muted state
 
 Requires: Python 3 (stdlib only), AutoHotkey v2,
-dsp_solo.ahk and dsp_mute_all.ahk next to this file.
+dsp_solo.ahk, dsp_mute_all.ahk and dsp_mute_toggle.ahk next to this file.
 Start via start_bridge.bat (shortcut it into shell:startup).
 """
 
@@ -27,7 +28,8 @@ AHK_EXE_CANDIDATES = [
 ]
 
 SOLO_SCRIPT = Path(__file__).with_name("dsp_solo.ahk")
-MUTE_SCRIPT = Path(__file__).with_name("dsp_mute_all.ahk")
+MUTE_SCRIPT   = Path(__file__).with_name("dsp_mute_all.ahk")
+TOGGLE_SCRIPT = Path(__file__).with_name("dsp_mute_toggle.ahk")
 
 AHK_ERRORS = {
     64: "usage error (no channel argument)",
@@ -79,6 +81,26 @@ class Handler(BaseHTTPRequestHandler):
                 self._reply(500, {"error": msg, "action": "mute-all"})
             return
 
+        if len(parts) == 2 and parts[0] == "toggle-mute":
+            try:
+                ch = int(parts[1])
+            except ValueError:
+                self._reply(400, {"error": f"invalid channel '{parts[1]}'"})
+                return
+            if not 1 <= ch <= 16:
+                self._reply(400, {"error": "toggle-mute supports channels "
+                                           "1-16 only"})
+                return
+            r = run_ahk(TOGGLE_SCRIPT, str(ch))
+            if r.returncode == 0:
+                self._reply(200, {"status": "ok", "action": "toggle-mute",
+                                  "channel": ch})
+            else:
+                msg = AHK_ERRORS.get(r.returncode,
+                                     f"AHK exit code {r.returncode}")
+                self._reply(500, {"error": msg, "channel": ch})
+            return
+
         if len(parts) == 2 and parts[0] == "solo":
             try:
                 ch = int(parts[1])
@@ -98,14 +120,15 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self._reply(404, {"error": "unknown endpoint",
-                          "usage": "/health, /solo/<1-20> or /mute-all"})
+                          "usage": "/health, /solo/<1-20>, "
+                                   "/toggle-mute/<1-16> or /mute-all"})
 
     def log_message(self, fmt, *args):
         print(f"[bridge] {self.address_string()} {fmt % args}")
 
 
 def main() -> None:
-    for script in (SOLO_SCRIPT, MUTE_SCRIPT):
+    for script in (SOLO_SCRIPT, MUTE_SCRIPT, TOGGLE_SCRIPT):
         if not script.exists():
             sys.exit(f"Missing {script} - keep it next to this file.")
     print(f"[bridge] AHK:    {AHK_EXE}")
