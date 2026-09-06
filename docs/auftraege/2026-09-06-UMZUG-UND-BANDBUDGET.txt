@@ -1,6 +1,8 @@
 BEZUGSZEILE: UMZUG-UND-BANDBUDGET 2026-09-06
 Absender: Design-/Review-Instanz (Cloud-Session, kein lokaler Zugriff)
 Empfaenger: lokale Claude-Code-Instanz auf Bens Mac, Repo ~/Desktop/REW_ATF_Script/
+Ziel-Remote: https://github.com/ben-txu/tuning_tool (privat, von Ben angelegt)
+Fassung 2 (2026-09-06): Phase A1 auf das vorhandene Remote umgestellt.
 
 EMPFANGSBESTAETIGUNG VERLANGT: Vor der ersten Aktion alle Blocktitel dieses
 Pakets nennen (K1, K2, A0, A1, A2, A3) und den Bootstrap bestaetigen
@@ -71,11 +73,15 @@ F4  Nur auf Kopien arbeiten. Der Fitter-Code wird fuer den Sweep nicht
     veraendert; das Sweep-Skript ist ein Aufrufer.
 F5  Ergebniszahlen nur aus dem abgelegten Skript. Zaehlwerte aus
     Tool-Output, nie aus dem Kopf. Kommandos stehen woertlich im Bericht.
+F6  Kein force-push, kein Umschreiben der lokalen Historie, kein Loeschen
+    des Remote-Anfangscommits. Zwei Historien werden per Merge vereint.
 
 Stoppklauseln (Achse: Test):
 S1  `git status --porcelain` am Start nicht leer -> STOP, melden (Regel 11).
 S2  Nach A1: `git rev-parse HEAD` lokal != `git rev-parse origin/main`
     oder Remote-Sichtbarkeit von pct6.py -> STOP.
+S5  Der Merge in A1 Schritt 4 meldet Konflikte ausserhalb von README.md
+    und LICENSE -> STOP, Konfliktdateien nennen, nichts aufloesen.
 S3  Der Fitter bietet kein Bandbudget als Parameter oder das Budget ist
     hart auf 15 begrenzt und nicht ueberschreibbar -> STOP nach dem Teil,
     der geht (Sweep bis zur Grenze), melden, nicht patchen.
@@ -96,7 +102,9 @@ Phase A0  Bootstrap und Bestandsaufnahme (nur lesen)
       --all | git cat-file --batch-check='%(objecttype) %(objectname)
       %(objectsize) %(rest)' | sort -k3 -n | tail -20`). Alles ueber 10 MB
       nennen.
-   d) Steht `gh` zur Verfuegung? (`gh --version`, `gh auth status`)
+   d) Steht `gh` zur Verfuegung? (`gh --version`, `gh auth status`).
+      Nur noch fuer die Sichtbarkeitspruefung in A1 5b) noetig, nicht
+      fuer das Anlegen.
    e) Definition von "cut and prune" aus STATUS.md/Code woertlich
       zitieren, mit Fundstelle. Signatur von run_fit() und der Name des
       Bandbudget-Parameters woertlich zitieren.
@@ -105,10 +113,17 @@ Phase A0  Bootstrap und Bestandsaufnahme (nur lesen)
 3. Abnahme A0: Bericht mit a-f. Ohne diesen Bericht keine Phase A1.
 
 ----------------------------------------------------------------------
-Phase A1  Umzug nach GitHub (privat)
+Phase A1  Umzug in das vorhandene Remote ben-txu/tuning_tool
 ----------------------------------------------------------------------
-Ziel: REW_ATF_Script liegt als PRIVATES Repo unter github.com/ben-txu,
-lokal ist origin gesetzt, main ist gepusht, Historie unveraendert.
+Ausgangslage (von der Cloud-Session am 2026-09-06 geprueft): Das Remote
+existiert, ist PRIVAT (anonymer Abruf -> 404) und enthaelt genau einen
+Commit e020358 "Initial commit" mit README.md (2 Zeilen) und LICENSE
+(MIT, Copyright 2026 ben-txu). Es ist fuer Claude Code bereits
+freigeschaltet (add_repo erfolgreich). Der lokale Ordner behaelt seinen
+Namen REW_ATF_Script; nur das Remote heisst tuning_tool.
+
+Ziel: main von REW_ATF_Script liegt im Remote, lokale Historie unveraendert,
+der Anfangscommit des Remotes bleibt erhalten (Merge, kein Force-Push).
 
 1. Falls A0 b) einen Treffer hat: Datei aus dem Index nehmen
    (`git rm --cached`), in .gitignore eintragen. Ist sie in der HISTORIE:
@@ -123,23 +138,33 @@ lokal ist origin gesetzt, main ist gepusht, Historie unveraendert.
    auf dem aktuellen Stand UND `git log -p --all -S'license' --
    '*.ini' '*.py' | head` (nur als Sichtung). Treffer, die ein echtes
    Geheimnis sind -> STOP, Ben nennen, nicht pushen.
-4. Repo anlegen und pushen, bevorzugt:
-     gh repo create ben-txu/REW_ATF_Script --private --source=. \
-        --remote=origin --push
-   Ist `gh` nicht da oder nicht eingeloggt: `brew install gh` und
-   `gh auth login` versuchen. Scheitert auch das: STOP, Ben bitten, im
-   Browser ein LEERES privates Repo "REW_ATF_Script" anzulegen; danach
-   `git remote add origin git@github.com:ben-txu/REW_ATF_Script.git`
-   bzw. https, `git push -u origin main`, dann alle weiteren Branches.
-5. Verifikation (Abnahme A1), alle drei muessen gelten:
+4. Remote einhaengen und Historien vereinen (auf main):
+     git remote add origin https://github.com/ben-txu/tuning_tool.git
+     git fetch origin
+     git merge --allow-unrelated-histories --no-ff origin/main \
+        -m "Merge remote initial commit (tuning_tool)"
+   Konfliktregel: Bei README.md gewinnt die LOKALE Fassung, falls eine
+   existiert; sonst wird die Remote-README uebernommen und der Tippfehler
+   "Turning Tool" zu "Tuning Tool" korrigiert. Bei LICENSE gewinnt eine
+   LOKALE Lizenzdatei, falls vorhanden; sonst bleibt die MIT-LICENSE des
+   Remotes und Ben wird im Bericht darauf hingewiesen, dass das Repo damit
+   unter MIT steht. Jeder andere Konflikt -> S5.
+   SSH statt HTTPS ist erlaubt, wenn `git@github.com:ben-txu/tuning_tool.git`
+   auf dem Mac eingerichtet ist; die URL steht im Bericht.
+5. Push:
+     git push -u origin main
+   danach alle weiteren lokalen Branches (`git push -u origin <branch>`),
+   keine Tags erfinden. Lehnt GitHub den Push wegen Dateigroesse ab -> STOP,
+   Datei nennen (A0 c) haette sie zeigen muessen).
+6. Verifikation (Abnahme A1), alle drei muessen gelten:
    a) `git rev-parse HEAD` == `git rev-parse origin/main`
-   b) `gh repo view ben-txu/REW_ATF_Script --json visibility` sagt
-      PRIVATE (oder Ben bestaetigt es im Browser)
+   b) Sichtbarkeit PRIVATE: `gh repo view ben-txu/tuning_tool --json
+      visibility`, oder `curl -s -o /dev/null -w '%{http_code}'
+      https://github.com/ben-txu/tuning_tool` liefert 404 ohne Login
    c) `git ls-tree -r origin/main --name-only | grep -E '(^|/)pct6\.py$'`
       ist leer (pct6_parser.py darf und soll erscheinen)
-6. Hinweis an Ben in den Bericht: Damit Cloud-Sessions das Repo sehen,
-   muss es unter claude.ai -> Settings -> Connectors -> GitHub fuer Claude
-   Code freigeschaltet werden. Das kann nur Ben.
+7. Bericht: Remote-URL, Merge-Commit-Hash, welche Fassung von README und
+   LICENSE gewonnen hat, Zahl der gepushten Branches.
 
 ----------------------------------------------------------------------
 Phase A2  Review-Datei uebernehmen
