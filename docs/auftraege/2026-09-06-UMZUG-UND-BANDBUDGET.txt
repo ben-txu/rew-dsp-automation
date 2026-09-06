@@ -1,0 +1,202 @@
+BEZUGSZEILE: UMZUG-UND-BANDBUDGET 2026-09-06
+Absender: Design-/Review-Instanz (Cloud-Session, kein lokaler Zugriff)
+Empfaenger: lokale Claude-Code-Instanz auf Bens Mac, Repo ~/Desktop/REW_ATF_Script/
+
+EMPFANGSBESTAETIGUNG VERLANGT: Vor der ersten Aktion alle Blocktitel dieses
+Pakets nennen (K1, K2, A0, A1, A2, A3) und den Bootstrap bestaetigen
+(CLAUDE.md, REVIEW.md, docs/STATUS.md gelesen, Stand mit Commit-Hash).
+Weicht STATUS.md von einer Annahme in diesem Paket ab, gewinnt STATUS.md;
+die Abweichung wird gemeldet, nicht stillschweigend angepasst.
+
+Ben ist kein Entwickler. Alles Technische macht die Instanz allein. Fragen an
+Ben nur als Text, nie als Klick-Abfrage. Massgeblich ist Bens LETZTE Antwort.
+
+======================================================================
+[KENNTNISNAHME K1] Resonalyze-Review liegt im Nachbar-Repo
+======================================================================
+
+Die Cloud-Session hat DIMOSUS/Resonalyze (Commit 8514e7b) gesichtet und das
+Ergebnis in das oeffentliche Repo ben-txu/rew-dsp-automation geschrieben:
+
+  Branch:  claude/resonalyze-repo-review-dcmlgy
+  Datei:   docs/reviews/2026-09-06-resonalyze.md
+  Commit:  b6f8b25
+  Groesse: 545 Zeilen, 31566 Bytes
+  sha256:  f33cae764eb1d5fefa312bd3649a7f5bc2d5e956a284e595b853beae930c415a
+
+Kernpunkte, die REW_ATF_Script betreffen (Details in der Datei):
+- Resonalyze behauptet, das ATF PC-Tool importiere REWs 30-Band-Datei
+  "Audiotec_Fischer_Full_EQ_(30_bands)" mit PK, LS_Q, HS_Q, AP1, AP2 per
+  Datei. Widerspricht unserem Stand (Datei nur PK/Festbreiten). Offen,
+  Verifikationsexperiment vorgeschlagen. NICHT Teil dieses Auftrags.
+- Helix-Phasensteuerung auf ULTRA S gemessen: AP2 Q=1 an der konfigurierten
+  Trennfrequenz, Raster 5.625 Grad, Corner-Cap 3/16 fs. Kein Delay-Limit,
+  keine Delay-Einheit fuer Helix dort bekannt.
+- Fitter-Konstanten und Widerlegungen mit Beweislage in Abschnitt 2, 4, 9.
+
+Diese Datei soll nach REW_ATF_Script uebernommen werden (siehe A2).
+
+======================================================================
+[KENNTNISNAHME K2] Was die Cloud-Session NICHT sehen konnte
+======================================================================
+
+Die Cloud-Session hatte nur den Skill rew-atf-automation (Stand 2026-08-18)
+und das oeffentliche Repo rew-dsp-automation. Nicht sichtbar: STATUS.md,
+target_level_fit.py, autoeq_out/, REW. Der Begriff "cut and prune" ist der
+Cloud-Session unbekannt; seine Definition kommt AUSSCHLIESSLICH aus
+STATUS.md bzw. dem Code. Parameternamen in diesem Auftrag sind Platzhalter
+und muessen gegen die echte Schnittstelle von run_fit() aufgeloest werden.
+
+======================================================================
+[AUFTRAG] UMZUG-UND-BANDBUDGET 2026-09-06
+======================================================================
+
+Ein Auftrag in vier Phasen A0 bis A3, strikt in dieser Reihenfolge. Jede
+Phase hat Abnahmekriterien; die naechste beginnt erst, wenn die vorige
+erfuellt und im Bericht dokumentiert ist. Eine Phase, die scheitert, stoppt
+das Paket; die anderen werden nicht "vorgezogen".
+
+Fences (Achse: Inhalt), gelten fuer alle Phasen:
+F1  REW-Messungen 1-61 (Aug-2024) sind ORIGINAL. Dieser Auftrag hat KEINEN
+    schreibenden REW-Zugriff. Lesende API-Zugriffe sind erlaubt, sofern der
+    Fitter sie braucht. Kein Session-Save, kein DELETE, kein PUT.
+F2  pct6.py (CClintos, keine Lizenz) wird weder benutzt noch geoeffnet noch
+    gepusht. Liegt eine Kopie im Repo-Baum, wird sie VOR dem ersten Push aus
+    dem Index und der Historie ferngehalten (siehe A1 Schritt 3) und Ben
+    wird informiert.
+F3  Keine REW-Originale (.mdat), keine Lizenzcodes, keine Passwoerter,
+    keine .pct6 mit Passwortschutz ins Remote.
+F4  Nur auf Kopien arbeiten. Der Fitter-Code wird fuer den Sweep nicht
+    veraendert; das Sweep-Skript ist ein Aufrufer.
+F5  Ergebniszahlen nur aus dem abgelegten Skript. Zaehlwerte aus
+    Tool-Output, nie aus dem Kopf. Kommandos stehen woertlich im Bericht.
+
+Stoppklauseln (Achse: Test):
+S1  `git status --porcelain` am Start nicht leer -> STOP, melden (Regel 11).
+S2  Nach A1: `git rev-parse HEAD` lokal != `git rev-parse origin/main`
+    oder Remote-Sichtbarkeit von pct6.py -> STOP.
+S3  Der Fitter bietet kein Bandbudget als Parameter oder das Budget ist
+    hart auf 15 begrenzt und nicht ueberschreibbar -> STOP nach dem Teil,
+    der geht (Sweep bis zur Grenze), melden, nicht patchen.
+S4  Zielkurve/target_convention des Laufs != STATUS.md-Stand -> STOP.
+
+----------------------------------------------------------------------
+Phase A0  Bootstrap und Bestandsaufnahme (nur lesen)
+----------------------------------------------------------------------
+1. CLAUDE.md, REVIEW.md, docs/STATUS.md lesen. Commit-Hash, Branch und
+   `git status --porcelain` in den Bericht.
+2. Feststellen und berichten:
+   a) Gibt es bereits ein Remote? (`git remote -v`)
+   b) Liegt pct6.py oder eine andere lizenzlose Fremddatei im Baum oder in
+      der Historie? (`git log --all --diff-filter=A --name-only | grep -i
+      pct6`)
+   c) Groesse der groessten getrackten Dateien (`git rev-list --objects
+      --all | git cat-file --batch-check='%(objecttype) %(objectname)
+      %(objectsize) %(rest)' | sort -k3 -n | tail -20`). Alles ueber 10 MB
+      nennen.
+   d) Steht `gh` zur Verfuegung? (`gh --version`, `gh auth status`)
+   e) Definition von "cut and prune" aus STATUS.md/Code woertlich
+      zitieren, mit Fundstelle. Signatur von run_fit() und der Name des
+      Bandbudget-Parameters woertlich zitieren.
+   f) Liste der Zweige aus [measurement_plan] der aktuellen INI, mit
+      Kanalschluessel (Variante A, strikt) und Kernband je Zweig.
+3. Abnahme A0: Bericht mit a-f. Ohne diesen Bericht keine Phase A1.
+
+----------------------------------------------------------------------
+Phase A1  Umzug nach GitHub (privat)
+----------------------------------------------------------------------
+Ziel: REW_ATF_Script liegt als PRIVATES Repo unter github.com/ben-txu,
+lokal ist origin gesetzt, main ist gepusht, Historie unveraendert.
+
+1. Falls A0 b) einen Treffer hat: Datei aus dem Index nehmen
+   (`git rm --cached`), in .gitignore eintragen. Ist sie in der HISTORIE:
+   NICHT eigenmaechtig die Historie umschreiben. Stattdessen STOP und Ben
+   die zwei Optionen nennen (Historie mit git filter-repo bereinigen vs.
+   Repo als frischen Stand ohne Historie neu aufsetzen). Ben entscheidet.
+2. .gitignore pruefen/ergaenzen: *.mdat, autoeq_out/**/*.wav,
+   autoeq_out/**/*.mdat, grosse Binaerartefakte aus A0 c). Text-Ergebnisse
+   (CSV, MD, JSON, INI) bleiben getrackt. Ergaenzung als eigener Commit.
+3. Geheimnis-Scan vor dem Push: `git grep -n -i -E
+   'license|lizenz|api[_-]?key|password|passwort|token' -- ':!*.md'`
+   auf dem aktuellen Stand UND `git log -p --all -S'license' --
+   '*.ini' '*.py' | head` (nur als Sichtung). Treffer, die ein echtes
+   Geheimnis sind -> STOP, Ben nennen, nicht pushen.
+4. Repo anlegen und pushen, bevorzugt:
+     gh repo create ben-txu/REW_ATF_Script --private --source=. \
+        --remote=origin --push
+   Ist `gh` nicht da oder nicht eingeloggt: `brew install gh` und
+   `gh auth login` versuchen. Scheitert auch das: STOP, Ben bitten, im
+   Browser ein LEERES privates Repo "REW_ATF_Script" anzulegen; danach
+   `git remote add origin git@github.com:ben-txu/REW_ATF_Script.git`
+   bzw. https, `git push -u origin main`, dann alle weiteren Branches.
+5. Verifikation (Abnahme A1), alle drei muessen gelten:
+   a) `git rev-parse HEAD` == `git rev-parse origin/main`
+   b) `gh repo view ben-txu/REW_ATF_Script --json visibility` sagt
+      PRIVATE (oder Ben bestaetigt es im Browser)
+   c) `git ls-tree -r origin/main --name-only | grep -i pct6` ist leer
+6. Hinweis an Ben in den Bericht: Damit Cloud-Sessions das Repo sehen,
+   muss es unter claude.ai -> Settings -> Connectors -> GitHub fuer Claude
+   Code freigeschaltet werden. Das kann nur Ben.
+
+----------------------------------------------------------------------
+Phase A2  Review-Datei uebernehmen
+----------------------------------------------------------------------
+1. Im Repo rew-dsp-automation (lokaler Klon oder frisch klonen):
+     git fetch origin claude/resonalyze-repo-review-dcmlgy
+     git show origin/claude/resonalyze-repo-review-dcmlgy:docs/reviews/2026-09-06-resonalyze.md > /tmp/resonalyze-review.md
+   sha256 pruefen gegen K1. Abweichung -> STOP.
+2. Nach REW_ATF_Script/docs/reviews/2026-09-06-resonalyze.md kopieren,
+   commit "docs: Resonalyze review 2026-09-06 (aus rew-dsp-automation
+   b6f8b25)", push.
+3. STATUS.md: Eintrag mit Bezugszeile, Fundstelle, und den zwei offenen
+   Punkten (ATF-30-Band-Dateiimport, Biquad-Entwurfsrate des Fitters).
+   Nur als offene Punkte, nicht als Auftraege.
+
+----------------------------------------------------------------------
+Phase A3  Bandbudget-Sweep
+----------------------------------------------------------------------
+Frage: Wie viele EQ-Baender braucht der Fitter je Zweig im
+Cut-and-Prune-Modus, um die Abweichung zur Zielkurve auf <= 0.5 dB zu
+bringen?
+
+Definitionen (vorab, nicht nachtraeglich anpassen):
+D1  Hauptmetrik: max |Residuum| ueber das Kernband des Zweigs.
+D2  Nebenmetrik, nur berichtet: RMS des Residuums im Kernband.
+D3  Residuum = (Messung + Filterkaskade) - Ziel, beides auf
+    res.target_shape des jeweiligen Laufs, smoothing=None beidseitig
+    (Glaettung und Filteraddition kommutieren nicht).
+D4  Eingang: die MMM-Messungen, die STATUS.md als aktuellen
+    rta_pure-Satz nennt. Zielkurve und target_convention wie in
+    STATUS.md dokumentiert. Kein Geschmacks-Tilt.
+D5  Fitter-Defaults (Korridor 0.75, Guard aktiv, Cut-and-Prune-Modus wie
+    in STATUS.md definiert). Es wird NUR das Bandbudget variiert.
+D6  Sweep: N = 1..30 (30 = ATF-EQ-Slots 0-29). Erlaubt der Fitter weniger,
+    gilt S3.
+D7  Ergebnis je Zweig: N_min mit D1 <= 0.5 dB; N_min mit D2 <= 0.5 dB;
+    vollstaendiger Verlauf D1 und D2 ueber N.
+D8  Zusatzspalte: Zahl der nach dem Pruning tatsaechlich belegten Baender
+    bei jedem N (falls Pruning weniger belegt als das Budget).
+
+Durchfuehrung:
+1. Skript autoeq_out/experiments/band_budget_sweep.py schreiben. Es ruft
+   run_fit() (oder den in A0 e) ermittelten Einstieg) je Zweig und je N
+   auf, ohne den Fitter zu aendern (F4). Ausgabe:
+   autoeq_out/experiments/band_budget_sweep.csv (Zweig, N, belegt, D1,
+   D2) und band_budget_sweep.md (Tabelle N_min je Zweig plus Verlauf).
+2. Determinismus: Skript zweimal laufen lassen, CSV per sha256
+   vergleichen. Ungleich -> im Bericht nennen, Ursache benennen.
+3. Falls ein Zweig bei N=30 die 0.5 dB nicht erreicht: so berichten,
+   Korridor und Guard NICHT lockern. Stattdessen den Wert bei N=30 und die
+   Frequenz des groessten Restfehlers angeben.
+4. Bericht nach REVIEW.md-Form: Kommandos woertlich, Zahlen aus dem
+   CSV, Abweichungen von D1-D8 mit Fundstelle. Was nicht verifiziert
+   werden konnte, als eigener Abschnitt.
+5. Commit "experiments: band budget sweep (UMZUG-UND-BANDBUDGET
+   2026-09-06)", STATUS.md fortschreiben, push. Working Tree sauber.
+
+Abnahme A3: CSV und MD liegen im Remote, Bericht nennt fuer jeden Zweig
+aus A0 f) entweder N_min (D1) oder den Grund, warum es keins gibt.
+
+======================================================================
+Ende des Pakets. Genau EIN Auftrag (A0-A3). Rueckfragen als Text an Ben.
+======================================================================
