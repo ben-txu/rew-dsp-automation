@@ -200,11 +200,18 @@ pro Oktave). Kein Nachoptimieren gesetzter Bänder.
   Iteration holte 0,09 zurück, weitere oszillierten. Die Gesamtordnung
   "Filter zuerst, dann glätten, Kalibrierung zuletzt" hatte in der falschen
   Reihenfolge 3,06 dB Fehler bei psychoakustischer Glättung. Glättung und
-  Filteraddition kommutieren nicht, wie bei uns bewiesen.
+  Filteraddition kommutieren nicht, wie bei uns bewiesen. Beweislage: **ein
+  Kanal eines Autos** (v6, linker Mid, 13-Band-Bank), nur im Commit-Text,
+  kein TODO-Eintrag, kein Test.
 - **Shelf-Entscheid per Lookahead** (#142): ein Shelf wird nur genommen, wenn
   der komplette Restfit mit ihm besser endet als ohne (mindestens 0,01 dB
   RMS, oder er spart Slots). Vier billigere Regeln wurden gemessen und
-  verworfen (Commit `66789fa`). Nur relevant, falls 1.1 den Shelf-Weg öffnet.
+  verworfen (Commit `66789fa`): absolute Verbesserungsschwelle; den einen
+  verdrängten Bell schlagen; Lookahead nur für die als Einzelband beste
+  Richtung; dasselbe auf einen Kandidaten pro Richtung beschränkt. Die
+  Messung ist **rein synthetisch** (fünf Kurvenformen); das Shelf-Feature
+  ist per Default aus und wartet laut TODO.md auf Feldvalidierung. Nur
+  relevant, falls 1.1 den Shelf-Weg öffnet.
 
 Zielkurve: Die Car-Presets sind seit #80 **kein Tilt mehr**, sondern flach
 400 Hz–5 kHz, Bass-Shelf 100 Hz/0,9 oct mit +6/+9,2/+12 dB, Höhen-Shelf −3 dB
@@ -280,11 +287,12 @@ sieht Laufzeitarbeit über PC-Tool und Messung. Was trotzdem trägt:
   das 262 ms, bei 750–3000 Hz 11,5 ms. Für die Auswahl der
   Sub/Satellit-Trennung nach minimalem max|GD| (Acta Acustica 2025 im
   Dossier) ist das der passende Fensterbegriff.
-- **Widerlegtes, das wir nicht wiederholen sollten** (TODO.md, mit [✗]):
-  Phasensteigungs-Prior für Delay (zweimal auf realen Messungen widerlegt);
-  Sum Loss als Lobe-Wähler über ~1 kHz (0,04–0,05-dB-Ties zwischen Lobe und
-  Halbperioden-Zwilling); Energie-Onsets über verschiedene Ketten hinweg
-  (2,4 ms daneben bei einem BW36-Bandpass).
+- **Widerlegtes, das wir nicht wiederholen sollten:** Phasensteigungs-Prior
+  für Delay (TODO.md [✗], zwei Kabinen, je zwei Junctions, Feld); Sum Loss
+  als Lobe-Wähler an Mid/Tweeter-Junctions (Code-Kommentare, sechs bis
+  sieben Kabinen, Feld); Energie-Onsets über verschiedene Ketten hinweg
+  (2,4 ms daneben bei einem BW36-Bandpass, aus synthetischen Unit-Tests).
+  Genauer siehe Abschnitt 9.
 - **Energie-Onset für L/R unter 300 Hz** (#180/#181): laufende Energie der
   Bandhüllkurve erreicht 10 % der Energie bis 60 ms nach dem Peak, Samples
   30 dB unter dem Peak zählen null. Nur für die zwei Seiten **eines**
@@ -420,6 +428,100 @@ die richtige.
 
 ---
 
+## 9. Nachverifikation (2026-09-06, zwei Sonnet-Agenten, lesend am Clone)
+
+Auftrag: die Excess-Group-Delay-Regel und die Widerlegungen gegen die
+Primärquellen (Guide, Commit-Texte, Code, Tests) prüfen, jede zitierte Zahl
+nachschlagen, Beweislage bewerten.
+
+### 9.1 Excess-Group-Delay-Regel: bestätigt, mit zwei Einschränkungen
+
+Alle sechs Behauptungen aus Abschnitt 4 stehen wörtlich oder sinngleich in
+den Quellen: Ursprung in Commit `6225e05` ("The guide's rule had the sign
+wrong"), Regel in `docs/agent/AGENT_GUIDE.md:156-174`, Definition in
+`REFERENCE.md:343` bzw. `PROTOCOL.md:343`, "zwei Türen" in Commit
+`f294adc` (#173).
+
+Implementierung (`dsp/MinimumPhase.cs`, `dsp/DataHelper.Phase.cs`):
+
+- Minimalphase per reellem Cepstrum (Log-Magnitude → IFFT → kausaler
+  Lifter → FFT, entspricht MATLAB `rceps`), Magnitude-Floor 1e-8 relativ
+  zum eigenen Peak, also skaleninvariant.
+- Die Magnitude stammt aus der **gegateten** IR: Tukey-Fenster
+  (links/Plateau/rechts in ms, projektweit, Fixed, ausdrücklich kein FDW),
+  Zero-Padding auf 32768 Punkte, zirkulärer linker Rand.
+- Excess GD = gemessene GD minus Minimalphasen-GD, beide als energie-
+  gewichtete Zähler über denselben Nenner, bin-exakt subtrahiert.
+- Rohe Mess-IR, nicht die Kette; der Kommentar in
+  `VirtualCrossoverPanel.AgentBridge.cs:2268-2277` sagt es ausdrücklich.
+- Tests pinnen die drei kanonischen Fälle (`GroupDelayCurvesTests.cs`):
+  reines Delay (Minimum ≈ 0, Excess = Delay), Einpol-Minimalphasensystem
+  (Excess innerhalb ±0,01 ms), AP2 bei 1 kHz Q 2 (Dispersion landet im
+  Excess), Laufzeit vor Minimalphasensystem (sauber getrennt).
+
+Einschränkungen:
+
+1. **Gate-Abhängigkeit ist nirgends als Caveat dokumentiert.** Die Zerlegung
+   hängt am Fenster: eine Reflexion innerhalb des Plateaus prägt der
+   Magnitude Welligkeit auf, deren "minimalphasiger" Anteil dann als
+   PEQ-korrigierbar gelesen wird. Anderes Gate, anderer Split, gleiche
+   Physik. Für uns heißt das: die Regel nur mit festem, dokumentiertem Gate
+   lesen und Sweep-Block 3 mit genau einem Gate auswerten.
+2. Der Messbereich "Sub 3,7–36 ms, Mids 2,6–18 ms, Tweeter bis 61–78 ms an
+   den Bandkanten" steht nur im Commit-Text als Handablesung der
+   Passat-v2-Session; kein Test pinnt ihn. Die Bandkanten-Werte werden
+   nirgends als unzuverlässig markiert, obwohl dort das Gültigkeits-Gate
+   (−60 dB global plus lokale Hüllkurve) die Bins gerade noch durchlässt.
+
+Physikalisch ist die Regel Lehrbuch: jedes stabile kausale LTI-System
+faktorisiert eindeutig in Minimalphase (aus |H| bestimmt, durch jeden
+minimalphasigen EQ mitkorrigiert) und Allpass-Excess. Wo sie irreführt:
+Gating-Artefakte (oben) und Treiber mit echter Nicht-Minimalphase
+(Kompressionstreiber-Breakup, Horn), deren Excess weder Laufzeit noch
+"zweiter Pfad" ist und ins Leseschema flach/versetzt/schwingend nicht
+passt. Ebenso jede Glättung der Magnitude **vor** dem Cepstrum-Schritt:
+sie drückt die Minimalphasen-GD und bläht den Excess auf, genau die
+Fehlrichtung, gegen die #170 gebaut wurde. Der Code glättet die Zähler
+nach der Transformation, nicht |H| davor.
+
+### 9.2 Widerlegungen: Beweislage im Einzelnen
+
+| Nr | Behauptung | Befund | Feld/Synth | Stichprobe | Wiedervorlage-Sperre |
+|---|---|---|---|---|---|
+| R1 | Phasensteigungs-Prior | bestätigt, alle Zahlen wörtlich in `TODO.md:55-70` | Feld | 2 Kabinen, je 2 Junctions | [✗] plus "do not re-propose" |
+| R2 | Sum Loss als Lobe-Wähler | bestätigt; meine Fassung vermengt zwei Mechanismen | Feld | 6–7 Kabinen | Code plus Tests, kein [✗] |
+| R3 | Energie-Onsets über Ketten | bestätigt, Rausch-Tabelle in #181 exakt | gemischt | 1 Aufnahme plus Rauschen; Ketten-Fall synthetisch; Regression 24 Sessions | Gating-Code plus 8 Tests, kein [✗] |
+| R4 | Fit-Render-Schleife | bestätigt | Feld | 1 Kanal, 1 Auto | nur Commit-Text |
+| R5 | Vier Shelf-Regeln | bestätigt; **synthetisch**, Shelf-Feature selbst offen | Synth | 5 Kurvenformen | "worth not repeating" im Commit; TODO offen |
+| R6 | Spread-Gate 20 dB | teilweise; Prozentzahlen aus Commit `b9374e4`, Code-Kommentar rundet abweichend | Feld | 1 Auto, 1 Array-Session, 2 Treiber | Konstante plus Kommentar, kein Test |
+
+Korrekturen an meiner Darstellung:
+
+- R2: Der Direct-Sound-Seed-Zeuge greift ab 1000 Hz
+  (`DirectSeedMinCrossoverHz`), der Polaritäts-Tie-Break-Zeuge schon ab
+  120 Hz (`DirectCoherenceMinCrossoverHz`); die "0,04–0,05 dB Ties" sind
+  zwei verschiedene Schwellen (0,04 dB Tie-Break, 0,05 dB Ladder-Veto).
+  "Über ~1 kHz" gilt für den Seed-Fall.
+- R3: Die Aussage "Onsets nicht über verschiedene Ketten" stützt sich auf
+  synthetische Unit-Tests (BW36-Bandpass 2,4 ms, BW48-Tiefpass 18 ms),
+  nicht auf Feldmessungen dieses Fehlers. Außerdem liegt selbst der
+  "richtige" Onset-Split (1,87 ms) noch 0,52 ms neben dem Hand-Tune
+  (1,35 ms); der Commit nennt die Lücke, löst sie nicht.
+- R6: Der lebende Code-Kommentar sagt "half of a midrange and nine tenths
+  of a tweeter" für ein 10-dB-Gate, der Commit 44 % und 69 %. Die
+  20-dB-Konstante ist aus einer Session eines Autos auf alle Autos
+  verallgemeinert.
+- TODO.md nennt noch `PhatSeedMinDominance`; die Konstante heißt heute
+  `PhatSeedMinRivalDominance` (kosmetisch).
+
+Bewertung: R1 und R2 tragen als allgemeine Regeln (Mechanismus-Argument
+plus mehrere Kabinen). R3 trägt als Vorsichtsregel, nicht als
+Feldbefund. R4 bis R6 sind Einzelfallmessungen, die als Konstanten
+verallgemeinert wurden; wer sie übernimmt, übernimmt die Verallgemeinerung
+mit.
+
+---
+
 ## Was ich nicht verifizieren konnte
 
 - Ob das PC-Tool die 30-Band-Datei tatsächlich per Datei-Dialog importiert
@@ -432,8 +534,12 @@ die richtige.
 - Die Quelle der Terzband-Tabelle hinter den Car-Presets (#80); der Autor
   hat "published" selbst aus dem Kommentar gestrichen.
 - Das 5,625°-Raster auf Mid/High-Kanälen (nur Sub gemessen).
-- Alle mit [AGENT] markierten Zeilenangaben habe ich nicht selbst
-  nachgelesen; die Agenten haben aus dem Clone zitiert, nicht aus dem
-  Gedächtnis.
+- Die mit [AGENT] markierten Zeilenangaben außerhalb von Abschnitt 9 habe
+  ich nicht selbst nachgelesen; die Agenten haben aus dem Clone zitiert.
+  Excess-GD-Regel und Widerlegungen sind durch zwei unabhängige
+  Zweitleser (Sonnet) gegen die Primärquellen geprüft (Abschnitt 9).
+- Ob die Gate-Abhängigkeit der Minimalphasen-Zerlegung in der Praxis
+  Größenordnungen erreicht, die das Leseschema kippen; das ist ein
+  Reviewer-Argument, keine Messung.
 - Den Zeitpunkt des letzten Checks; die Deltas beziehen sich auf den
   gesamten Stand seit Juli.
