@@ -60,10 +60,11 @@ Fences (Achse: Inhalt), gelten fuer alle Phasen:
 F1  REW-Messungen 1-61 (Aug-2024) sind ORIGINAL. Dieser Auftrag hat KEINEN
     schreibenden REW-Zugriff. Lesende API-Zugriffe sind erlaubt, sofern der
     Fitter sie braucht. Kein Session-Save, kein DELETE, kein PUT.
-F2  pct6.py (CClintos, keine Lizenz) wird weder benutzt noch geoeffnet noch
-    gepusht. Liegt eine Kopie im Repo-Baum, wird sie VOR dem ersten Push aus
-    dem Index und der Historie ferngehalten (siehe A1 Schritt 3) und Ben
-    wird informiert.
+F2  Die FREMDE Datei pct6.py (CClintos, keine Lizenz) wird weder benutzt
+    noch geoeffnet noch gepusht. Unser eigener Parser heisst pct6_parser.py
+    und ist Projektcode; er bleibt getrackt und wird gepusht. Liegt eine
+    Kopie der Fremddatei im Repo-Baum, wird sie VOR dem ersten Push aus dem
+    Index ferngehalten (siehe A1 Schritt 1) und Ben wird informiert.
 F3  Keine REW-Originale (.mdat), keine Lizenzcodes, keine Passwoerter,
     keine .pct6 mit Passwortschutz ins Remote.
 F4  Nur auf Kopien arbeiten. Der Fitter-Code wird fuer den Sweep nicht
@@ -87,9 +88,10 @@ Phase A0  Bootstrap und Bestandsaufnahme (nur lesen)
    `git status --porcelain` in den Bericht.
 2. Feststellen und berichten:
    a) Gibt es bereits ein Remote? (`git remote -v`)
-   b) Liegt pct6.py oder eine andere lizenzlose Fremddatei im Baum oder in
-      der Historie? (`git log --all --diff-filter=A --name-only | grep -i
-      pct6`)
+   b) Liegt die Fremddatei pct6.py (exakter Basename, NICHT
+      pct6_parser.py) oder eine andere lizenzlose Fremddatei im Baum oder
+      in der Historie? (`git log --all --diff-filter=A --name-only |
+      grep -E '(^|/)pct6\.py$'`)
    c) Groesse der groessten getrackten Dateien (`git rev-list --objects
       --all | git cat-file --batch-check='%(objecttype) %(objectname)
       %(objectsize) %(rest)' | sort -k3 -n | tail -20`). Alles ueber 10 MB
@@ -133,7 +135,8 @@ lokal ist origin gesetzt, main ist gepusht, Historie unveraendert.
    a) `git rev-parse HEAD` == `git rev-parse origin/main`
    b) `gh repo view ben-txu/REW_ATF_Script --json visibility` sagt
       PRIVATE (oder Ben bestaetigt es im Browser)
-   c) `git ls-tree -r origin/main --name-only | grep -i pct6` ist leer
+   c) `git ls-tree -r origin/main --name-only | grep -E '(^|/)pct6\.py$'`
+      ist leer (pct6_parser.py darf und soll erscheinen)
 6. Hinweis an Ben in den Bericht: Damit Cloud-Sessions das Repo sehen,
    muss es unter claude.ai -> Settings -> Connectors -> GitHub fuer Claude
    Code freigeschaltet werden. Das kann nur Ben.
