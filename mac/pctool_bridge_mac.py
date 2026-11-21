@@ -18,17 +18,19 @@ no pip packages). Every keystroke script first brings the PC-Tool to the
 front and aborts if it is not frontmost, so digits never land in another
 app. Afterwards the previously active app is brought back.
 
-STATUS — read before the first run:
-  * Bare digits 1…9, 0 toggling the mute of Outputs 1–10 are VERIFIED in
-    the native macOS PC-Tool 6.05.01 (no text field focused).
-  * The Solo modifier on macOS is NOT verified. The PC-Tool is a Qt app,
-    and Qt maps the Windows "Ctrl" shortcut to the Command key on macOS,
-    so the default is Command (⌘1…⌘0, ⌘⇧1…⌘⇧0). If ⌘1 does not solo
-    Output 1, start with --solo-modifier control.
-  * Shift+1…6 for mute of channels 11–16 is taken from the Windows
-    shortcut sheet and NOT verified on macOS.
-  Verify with the curl tests in README.md (macOS-native section) before
-  trusting a measurement run.
+STATUS — tested end to end on a Mac mini with the native PC-Tool 6.05.01
+(HELIX DSP ULTRA XT demo, 2026-11-21), all through this bridge:
+  * /toggle-mute/3 (key 3) and /toggle-mute/13 (Shift+3) toggle exactly
+    that output's mute.
+  * /solo/1 (⌘2 ⌘1) solos Output 1, a second /solo/1 keeps it soloed,
+    /solo/12 (⌘1 ⌘⇧2) and /solo/5 solo exactly those outputs.
+  * /mute-all leaves solo mode and restores the previous mute flags.
+  * Keys land even when the PC-Tool runs full-screen in its own Space,
+    and focus returns to the previously active app.
+  The Solo modifier is Command (Qt maps the Windows Ctrl shortcut to ⌘);
+  --solo-modifier control stays available but was not needed. Tested on
+  the ULTRA XT demo only; run the README curl tests once on your own
+  setup before trusting a measurement run.
 
 Permissions (one-time, macOS asks on first use):
   System Settings → Privacy & Security → Accessibility: allow the app that
@@ -58,6 +60,7 @@ DIGIT_KEYCODE = {"1": 18, "2": 19, "3": 20, "4": 21, "5": 23,
 # Pauses mirror the AHK scripts (ms)
 SETTLE_AFTER_ACTIVATE = 0.10
 GAP_BETWEEN_KEYS = 0.15
+RESTORE_DELAY = 0.3          # before giving focus back (see _applescript)
 
 EXIT_NOT_RUNNING = 66
 EXIT_NOT_FRONT = 67
@@ -116,10 +119,15 @@ def _applescript(keys: list[tuple[str, list[str]]]) -> str:
         lines.append(f'  key code {DIGIT_KEYCODE[digit]}{using}')
     lines += [
         'end tell',
+        # Restore the previous app. A plain `activate` right after the keys
+        # loses the race against the PC-Tool (Qt) finishing its own
+        # activation, so wait briefly and set frontmost via System Events.
         'if prevApp is not missing value and prevApp is not '
         f'"{bid}" then',
+        f'  delay {RESTORE_DELAY}',
         '  try',
-        '    tell application id prevApp to activate',
+        '    tell application "System Events" to set frontmost of '
+        '(first process whose bundle identifier is prevApp) to true',
         '  end try',
         'end if',
     ]
@@ -254,7 +262,10 @@ def main() -> None:
         sys.exit("This bridge is for macOS. On Windows use windows/solo_bridge.py.")
 
     class SingleInstanceServer(HTTPServer):
-        allow_reuse_address = False   # second instance fails fast
+        # macOS: SO_REUSEADDR still refuses a second LISTENING bridge on the
+        # port (single-instance guard kept) but allows an immediate restart
+        # while the old socket sits in TIME_WAIT.
+        allow_reuse_address = True
 
     try:
         server = SingleInstanceServer((args.bind, args.port), Handler)

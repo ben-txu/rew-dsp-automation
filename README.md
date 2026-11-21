@@ -30,7 +30,7 @@ fine.
 needed. `mac/pctool_bridge_mac.py` offers the same HTTP endpoints on
 `localhost` and sends the hotkeys via System Events; see
 [Setup without a VM](#1b-setup-without-a-vm-native-macos-pc-tool). The Solo
-modifier on macOS is not verified yet, so run the curl tests first.
+and mute hotkeys are tested on PC-Tool 6.05.01 for Mac.
 
 ## Features
 
@@ -148,13 +148,36 @@ frontmost before **every** key (so digits never land in another window),
 sends the keys and then returns focus to the previous app. Do not leave a
 text field focused in the PC-Tool: bare digits are its mute hotkeys.
 
-What is verified on macOS and what is not:
+Tested end to end through the bridge on a Mac mini with the native
+PC-Tool 6.05.01 (HELIX DSP ULTRA XT demo, 2026-11-21), reading the Mute
+indicators on *Output → Time Alignment*:
 
-| Hotkey | macOS status |
-|---|---|
-| `1`…`9`, `0` toggle mute of Outputs 1–10 | verified (PC-Tool 6.05.01) |
-| Solo `⌘1`…`⌘0`, `⌘⇧1`…`⌘⇧0` | **unverified** — Qt maps the Windows Ctrl shortcut to ⌘; if it does not solo, start the bridge with `--solo-modifier control` |
-| `⇧1`…`⇧6` mute of channels 11–16 | **unverified** (from the Windows shortcut sheet) |
+| Request | Keys sent | Result on macOS |
+|---|---|---|
+| `/toggle-mute/3` | `3` | only Output 3 toggles — **verified** |
+| `/toggle-mute/13` | `⇧3` | only Output 13 toggles — **verified** |
+| `/solo/1`, twice | `⌘2 ⌘1` | Output 1 soloed, stays soloed on repeat — **verified** |
+| `/solo/12`, `/solo/5` | `⌘1 ⌘⇧2`, `⌘1 ⌘5` | exactly that output soloed — **verified** |
+| `/mute-all` | `⌘2 ⌘1 ⌘1` | solo off, previous mute flags restored — **verified** |
+
+The Solo modifier on macOS is **⌘** (Qt maps the Windows Ctrl shortcut to
+Command), which is the bridge default. Keys also land when the PC-Tool
+runs full-screen in its own Space, and focus returns to the app you were
+in. Only the ULTRA XT demo was tested; other models use the same hotkeys
+per the shortcut sheet, so run the curl tests once on your own setup.
+
+Fixed during the test (2026-11-21):
+- **Restart refused** ("Port 4737 already in use" for a while after the
+  bridge was stopped): the port stayed in TIME_WAIT. The bridge now sets
+  `SO_REUSEADDR`, which on macOS still refuses a second running bridge but
+  allows an immediate restart.
+- **Focus not returned**: the PC-Tool finished activating after the
+  bridge had given focus back and stayed in front. The bridge now waits
+  0.3 s and restores the previous app via System Events.
+
+On the test Mac no permission prompt appeared, because the terminal already
+had Accessibility/Automation rights. On a fresh Mac expect the prompts
+described in step 3.
 
 Test before the first run (with a demo device or the amps off):
 
@@ -164,6 +187,7 @@ curl http://localhost:4737/solo/1    → Output 1 goes solo
 curl http://localhost:4737/solo/1    → run twice: Output 1 must STAY solo
 curl http://localhost:4737/solo/2    → only Output 2 soloed (exclusive solo)
 curl http://localhost:4737/mute-all  → solo off, all-muted baseline back
+curl http://localhost:4737/toggle-mute/3  → Output 3 mute toggles (run twice)
 ```
 
 `--dry-run` logs the key sequences without sending anything. To keep the

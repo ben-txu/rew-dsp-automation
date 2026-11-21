@@ -23,6 +23,19 @@ All notable changes to this project are documented here.
   (`decode`, `encode` with self-check, `channels`, `check-muted`); knows
   all 33 models and finds the physical outputs structurally on each.
 
+### Fixed (macOS bridge, found in the first end-to-end test)
+- The bridge could not be restarted for a while after stopping it (port
+  in TIME_WAIT); it now uses `SO_REUSEADDR`, which keeps the
+  single-instance guard on macOS.
+- Focus was not returned to the previously active app; the restore now
+  waits 0.3 s and uses System Events.
+- Launcher runs Python unbuffered so the request log shows up live.
+
+### Verified
+- Native macOS PC-Tool 6.05.01 (ULTRA XT demo): ⌘ solo incl. ⌘⇧ for
+  11–20, idempotent re-solo, digit and Shift-digit mute, mute-all, keys
+  into a full-screen PC-Tool in another Space, focus return.
+
 ## [0.0.2] — 2026-07-11
 
 ### Added
