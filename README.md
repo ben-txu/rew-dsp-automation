@@ -194,6 +194,38 @@ curl http://localhost:4737/toggle-mute/3  → Output 3 mute toggles (run twice)
 bridge reachable from another machine use `--bind 0.0.0.0` (not needed for
 the normal single-Mac setup).
 
+### PC-Tool keyboard shortcuts on macOS (all tested)
+
+Every keyboard shortcut on the PC-Tool's *Help → Shortcuts* page, tested
+by hand on a Mac mini with the native PC-Tool 6.05.01 (HELIX DSP ULTRA XT
+demo, 2026-11-21). The help page shows a Windows/German keyboard; on the
+Mac, **Ctrl becomes ⌘**.
+
+| Help page says | Function | On macOS |
+|---|---|---|
+| `1`…`0` | Mute Output 1–10 (toggle) | ✅ works (no text field may have focus) |
+| `⇧1`…`⇧6` | Mute Output 11–16 (toggle) | ✅ works |
+| `ctrl+1`…`ctrl+0` | Solo Output 1–10 (toggle) | ✅ works as **⌘1…⌘0**; Control+digit does nothing |
+| `ctrl+⇧1`…`ctrl+⇧0` | Solo Output 11–20 | ✅ works as **⌘⇧1…** (tested up to 16 on the XT) |
+| `F1`…`F12` | Select channel 1–12 | ⚠️ F1–F10 and F12 work; **F11 is taken by macOS** (Show Desktop) and never reaches the PC-Tool. On Mac keyboards press `fn`+F-key, or enable "Use F1, F2, etc. keys as standard function keys" |
+| `⇧F1`…`⇧F6` | Help: select channel 13–16 | ❌ **help text is wrong**: ⇧F*n* selects channel **10+n** (⇧F1 = 11, ⇧F3 = 13, ⇧F6 = 16) |
+| double-tap `F1`…`F12` | "Solo select linked channel" | ✅ selects only that channel inside a link group, for editing. It is **not** an audio solo |
+| `⇧` + double-tap `F1`…`F6` | same for 13–16 | ✅ works with the same 10+n offset (⇧F3 = 13) |
+| `⇧.` / `⇧,` | Link / unlink all channels temporarily | ✅ works |
+| `H` / `L` / `P` / `E` | Jump to High-pass / Low-pass / Phase & Time / Equalizer | ✅ moves the active (grey) control into that section; nothing visible if it is already there |
+| `⇧N` | Graph box: output names | ✅ toggles the legend between "Output n" and channel names |
+| `R` or `I` | Advanced Import Manager (afpx / REW) | ✅ opens it for the selected output |
+| `⇧T` | ATM – Automatic Time Measurement | ✅ opens the ATM window |
+| `S` | Save | ✅ opens "Save Sound Setup" |
+| `Q` | Quit | ✅ quits; asks "Save changes?" if the setup was modified |
+| `D` | Frameless window | ➖ no effect while the PC-Tool runs as a macOS full-screen window (not tested windowed) |
+| `O` | RTA window "always on top" | ❌ no effect: the RTA window's level stayed normal after 1, 2 and 3 presses |
+
+Only Solo and Mute matter for the measurement script, and both work
+through the bridge. The help page's mouse actions (Advanced Import Manager
+via the channel button, copy channel parameters, rename / mix ratio /
+delete routing, and so on) were not part of this test.
+
 ### 2. macOS
 
 1. `pip3 install flask requests`

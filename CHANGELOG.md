@@ -32,6 +32,10 @@ All notable changes to this project are documented here.
 - Launcher runs Python unbuffered so the request log shows up live.
 
 ### Verified
+- All 20 keyboard shortcuts from the PC-Tool help page tested on macOS
+  (README table): ⌘ instead of Ctrl; F11 swallowed by macOS; help text
+  for ⇧F1–F6 wrong (selects 10+n); `O` (RTA always on top) has no effect;
+  `D` has no effect in macOS full screen.
 - Native macOS PC-Tool 6.05.01 (ULTRA XT demo): ⌘ solo incl. ⌘⇧ for
   11–20, idempotent re-solo, digit and Shift-digit mute, mute-all, keys
   into a full-screen PC-Tool in another Space, focus return.
