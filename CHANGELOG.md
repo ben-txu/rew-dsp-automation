@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+### Added
+- **Native macOS PC-Tool support**: `mac/pctool_bridge_mac.py` (+ double-
+  click launcher `mac/PC-Tool-Bridge.command`) serves the same endpoints as
+  the Windows bridge on `localhost:4737` and sends the Solo/Mute hotkeys
+  via System Events — no Parallels VM or AutoHotkey needed. It checks that
+  the PC-Tool is frontmost before every key and restores the previous app
+  afterwards. Bare-digit mute is verified on PC-Tool 6.05.01 for Mac; the
+  Solo modifier (default ⌘, `--solo-modifier control` as fallback) and
+  Shift-mute for 11–16 are not yet verified on macOS. `--dry-run` mode.
+- `docs/helix-pct6-format.md`: notes on the PC-Tool `.pct6` preset format
+  (container, channel addressing, inverted `MT` mute flag, destructive
+  Solo, name enums, filter/crossover codes, bypass, gain/delay storage,
+  load+save side effects) with a reference for all 33 PC-Tool 6.05 models
+  (device id, rate, physical output block, virtual channels, FX targets,
+  model families) and the ABP/RealCenter FX fields.
+- `tools/pct6_tool.py`: stdlib reader/writer for `.pct6` files
+  (`decode`, `encode` with self-check, `channels`, `check-muted`); knows
+  all 33 models and finds the physical outputs structurally on each.
+
 ## [0.0.2] — 2026-07-11
 
 ### Added

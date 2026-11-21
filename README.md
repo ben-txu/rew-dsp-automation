@@ -26,6 +26,12 @@ The split is deliberate: REW does the timing-critical audio I/O natively on
 macOS, while the PC-Tool only receives control keystrokes — a job a VM handles
 fine.
 
+**Native macOS PC-Tool (no VM):** with PC-Tool 6.05 for Mac the VM is not
+needed. `mac/pctool_bridge_mac.py` offers the same HTTP endpoints on
+`localhost` and sends the hotkeys via System Events; see
+[Setup without a VM](#1b-setup-without-a-vm-native-macos-pc-tool). The Solo
+modifier on macOS is not verified yet, so run the curl tests first.
+
 ## Features
 
 - **One-button multi-channel runs** — RTA or sweep, all channels or a subset
@@ -124,6 +130,46 @@ curl http://10.211.55.200:4737/solo/1    → run twice: channel 1 must STAY solo
 curl http://10.211.55.200:4737/mute-all  → with an all-muted baseline: silent
 ```
 
+### 1b. Setup without a VM (native macOS PC-Tool)
+
+Use this instead of step 1 if the PC-Tool runs natively on the Mac
+(PC-Tool 6.05 for macOS). Requires only Python 3 (stdlib) — no AutoHotkey.
+
+1. Start the PC-Tool and open your device (or a demo device).
+2. Start the bridge: double-click `mac/PC-Tool-Bridge.command`, or
+   `python3 mac/pctool_bridge_mac.py`. It listens on `127.0.0.1:4737`.
+3. On the first keystroke macOS asks for permissions: allow the terminal
+   app under *System Settings → Privacy & Security → Accessibility*, and
+   allow it to control *System Events* (Automation).
+4. In `dv_measure.ini` set `solo_bridge = http://localhost:4737`.
+
+Each request brings the PC-Tool to the front, checks that it really is
+frontmost before **every** key (so digits never land in another window),
+sends the keys and then returns focus to the previous app. Do not leave a
+text field focused in the PC-Tool: bare digits are its mute hotkeys.
+
+What is verified on macOS and what is not:
+
+| Hotkey | macOS status |
+|---|---|
+| `1`…`9`, `0` toggle mute of Outputs 1–10 | verified (PC-Tool 6.05.01) |
+| Solo `⌘1`…`⌘0`, `⌘⇧1`…`⌘⇧0` | **unverified** — Qt maps the Windows Ctrl shortcut to ⌘; if it does not solo, start the bridge with `--solo-modifier control` |
+| `⇧1`…`⇧6` mute of channels 11–16 | **unverified** (from the Windows shortcut sheet) |
+
+Test before the first run (with a demo device or the amps off):
+
+```
+curl http://localhost:4737/health    → "pctool_running": true
+curl http://localhost:4737/solo/1    → Output 1 goes solo
+curl http://localhost:4737/solo/1    → run twice: Output 1 must STAY solo
+curl http://localhost:4737/solo/2    → only Output 2 soloed (exclusive solo)
+curl http://localhost:4737/mute-all  → solo off, all-muted baseline back
+```
+
+`--dry-run` logs the key sequences without sending anything. To keep the
+bridge reachable from another machine use `--bind 0.0.0.0` (not needed for
+the normal single-Mac setup).
+
 ### 2. macOS
 
 1. `pip3 install flask requests`
@@ -215,6 +261,34 @@ Most of these were found the hard way during development:
   before exiting solo (each audible for ~150 ms). This is what makes
   the end state independent of whatever was soloed before.
 
+## Helix / PC-Tool preset files (`.pct6`)
+
+[`docs/helix-pct6-format.md`](docs/helix-pct6-format.md) collects what we
+learned about the PC-Tool's `.pct6` sound-setup files, for **all 33
+HELIX / BRAX / MATCH models** of PC-Tool 6.05: the container
+(XOR `ATFV6` + zlib, no magic), channel addressing (`ON`, physical vs.
+virtual outputs), the **inverted mute flag** (`MT="1"` = audible), why
+**Solo is destructive** for saved presets, the channel-name enums, filter
+and crossover type codes, bypass flags, gain/delay storage, and what the
+PC-Tool silently changes on a plain load + save, plus a per-model reference
+(device id, sample rate, physical output block, virtual channels, FX
+targets, model families) and the FX fields (Augmented Bass Processing,
+RealCenter).
+
+`tools/pct6_tool.py` (stdlib only) reads these files offline:
+
+```
+python3 tools/pct6_tool.py channels setup.pct6      # Output k ↔ ON ↔ name ↔ mute
+python3 tools/pct6_tool.py check-muted base.pct6    # exit 0 = all outputs muted
+python3 tools/pct6_tool.py decode setup.pct6 setup.xml
+python3 tools/pct6_tool.py encode setup.xml new.pct6
+```
+
+`channels` recognises the model from the file and gives the DSP channel numbers for `[channels]` in
+`dv_measure.ini`; `check-muted` verifies a saved all-muted baseline
+preset. **Never save a preset while a channel is soloed** — the file has
+no solo flag, so the solo's mutes become permanent.
+
 ## Repository layout
 
 ```
@@ -222,11 +296,17 @@ mac/
   dv_speaker_measure.py     the orchestrator (runs on macOS)
   dv_measure.example.ini    copy to dv_measure.ini and edit
   Measure.command           double-click launcher
+  pctool_bridge_mac.py      solo/mute bridge for the native macOS PC-Tool
+  PC-Tool-Bridge.command    double-click launcher for the bridge
 windows/
   solo_bridge.py            HTTP→AHK bridge (runs inside the VM, stdlib only)
   dsp_solo.ahk              sends the Solo hotkey to DSP PC-Tool
   dsp_mute_all.ahk          mutes all channels (end-of-run state)
   start_bridge.bat          starts the bridge; shortcut this into shell:startup
+tools/
+  pct6_tool.py              offline reader/writer for .pct6 preset files
+docs/
+  helix-pct6-format.md      .pct6 format and PC-Tool behaviour notes
 ```
 
 ## License
