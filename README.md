@@ -218,8 +218,8 @@ Mac, **Ctrl becomes ⌘**.
 | `⇧T` | ATM – Automatic Time Measurement | ✅ opens the ATM window |
 | `S` | Save | ✅ opens "Save Sound Setup" |
 | `Q` | Quit | ✅ quits; asks "Save changes?" if the setup was modified |
-| `D` | Frameless window | ➖ no effect while the PC-Tool runs as a macOS full-screen window (not tested windowed) |
-| `O` | RTA window "always on top" | ❌ no effect: the RTA window's level stayed normal after 1, 2 and 3 presses |
+| `D` | Frameless window | ❌ no effect: neither in the main window (it opens as a macOS full-screen window) nor in the normal, framed RTA window |
+| `O` | RTA window "always on top" | ❌ no effect: the RTA window's level stayed normal after 1, 2 and 3 presses (rechecked). The setting *DSP PC-Tool Config → RTA window mode → always on top mode* is the alternative (not tested) |
 
 Only Solo and Mute matter for the measurement script, and both work
 through the bridge. The help page's mouse actions (Advanced Import Manager
