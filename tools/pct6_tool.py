@@ -14,6 +14,8 @@ This tool never talks to the PC-Tool or a device. `encode` re-decodes its
 own result and refuses to write if the round trip differs.
 """
 
+from __future__ import annotations
+
 import argparse
 import re
 import sys
@@ -40,6 +42,36 @@ OUTPUT_NAMES = [
     "Pass Through 11", "Pass Through 12", "User defined Name",
 ]
 USER_DEFINED = 56
+
+# <ATF Dev="…"> model id -> (model name, processing rate in Hz).
+# From the default demo file of each model (PC-Tool 6.05.01) and its
+# start-screen spec panel. All sample-count fields use this rate.
+DEVICES = {
+    17: ("BRAX DSP 192 kHz", 192000), 43: ("BRAX DSP 96 kHz", 96000),
+    53: ("HELIX DSP ULTRA XT", 96000), 39: ("HELIX DSP ULTRA S", 96000),
+    22: ("HELIX DSP ULTRA", 96000), 30: ("HELIX DSP PRO MK3", 96000),
+    33: ("HELIX DSP.3S", 96000), 21: ("HELIX DSP.3", 96000),
+    31: ("HELIX DSP MINI MK2", 96000), 19: ("HELIX DSP MINI", 96000),
+    32: ("HELIX P SIX DSP ULTIMATE", 96000),
+    38: ("HELIX V EIGHTEEN DSP", 48000), 35: ("HELIX V TWELVE DSP MK2", 48000),
+    25: ("HELIX V TWELVE DSP", 48000), 44: ("HELIX V EIGHT DSP ULTIMATE", 48000),
+    24: ("HELIX V EIGHT DSP MK2", 48000), 34: ("HELIX M SIX DSP", 48000),
+    26: ("HELIX M FOUR DSP", 48000), 45: ("HELIX ISM 400.2DSP", 48000),
+    46: ("HELIX AMPLIFY 206 DSP", 48000), 48: ("MATCH UP 10DSP MK2", 48000),
+    28: ("MATCH UP 10DSP", 48000), 40: ("MATCH UP 10DSP 24V", 48000),
+    49: ("MATCH UP 8DSP MK2", 48000), 37: ("MATCH UP 8DSP", 48000),
+    50: ("MATCH UP 8BMW MK2", 48000), 41: ("MATCH UP 8BMW", 48000),
+    51: ("MATCH UP 6DSP MK2", 48000), 42: ("MATCH UP 6DSP", 48000),
+    47: ("MATCH UP 4DSP", 48000), 29: ("MATCH M 5.4DSP", 48000),
+    23: ("MATCH M 5DSP MK2", 48000), 36: ("MATCH PP 86DSP MK2", 48000),
+}
+
+
+def device(root: dict) -> tuple[str, int | None]:
+    try:
+        return DEVICES[int(root.get("Dev", ""))]
+    except (KeyError, ValueError):
+        return f"unknown model (Dev={root.get('Dev', '?')})", None
 
 
 def _xor(data: bytes) -> bytes:
@@ -156,13 +188,19 @@ def cmd_encode(args) -> int:
 def cmd_channels(args) -> int:
     xml, gen = _load(args.file)
     r = _root(xml)
-    print(f"PC-Tool {r.get('V', '?')}  Dev={r.get('Dev', '?')}  "
-          f"OUTS={r.get('OUTS', '?')}  INS={r.get('INS', '?')}  ({gen})")
+    model, rate = device(r)
+    chans = output_channels(xml)
+    nphys = sum(c["physical"] for c in chans)
+    print(f"{model}  ({rate // 1000 if rate else '?'} kHz)  "
+          f"PC-Tool {r.get('V', '?')}  Dev={r.get('Dev', '?')}  "
+          f"OUTS={r.get('OUTS', '?')}  INS={r.get('INS', '?')}  "
+          f"physical outputs={nphys}  ({gen})")
     print(f"{'Output':>6}  {'ON':>3}  {'state':<7} {'EQ':>3}  {'LG':>3}  name")
-    for c in output_channels(xml):
+    for c in chans:
         if not (c["physical"] or args.all):
             continue
-        label = str(c["output"]) if c["physical"] else "virt"
+        # non-physical = virtual channel or digital-output pair
+        label = str(c["output"]) if c["physical"] else "-"
         state = "muted" if c["muted"] else "audible"
         print(f"{label:>6}  {c['on']:>3}  {state:<7} {c['eq_bands']:>3}  "
               f"{c['link_group']:>3}  {c['name']}")
@@ -195,7 +233,7 @@ def main() -> int:
     s = sub.add_parser("channels", help="list outputs: number, ON, mute, name")
     s.add_argument("file")
     s.add_argument("--all", action="store_true",
-                   help="include virtual channels")
+                   help="include non-physical channels (virtual / digital)")
     s.set_defaults(fn=cmd_channels)
     s = sub.add_parser("check-muted",
                        help="exit 0 if every physical output is muted")

@@ -16,9 +16,12 @@ All notable changes to this project are documented here.
 - `docs/helix-pct6-format.md`: notes on the PC-Tool `.pct6` preset format
   (container, channel addressing, inverted `MT` mute flag, destructive
   Solo, name enums, filter/crossover codes, bypass, gain/delay storage,
-  load+save side effects, device overview).
+  load+save side effects) with a reference for all 33 PC-Tool 6.05 models
+  (device id, rate, physical output block, virtual channels, FX targets,
+  model families) and the ABP/RealCenter FX fields.
 - `tools/pct6_tool.py`: stdlib reader/writer for `.pct6` files
-  (`decode`, `encode` with self-check, `channels`, `check-muted`).
+  (`decode`, `encode` with self-check, `channels`, `check-muted`); knows
+  all 33 models and finds the physical outputs structurally on each.
 
 ## [0.0.2] — 2026-07-11
 

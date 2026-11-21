@@ -264,12 +264,16 @@ Most of these were found the hard way during development:
 ## Helix / PC-Tool preset files (`.pct6`)
 
 [`docs/helix-pct6-format.md`](docs/helix-pct6-format.md) collects what we
-learned about the PC-Tool's `.pct6` sound-setup files: the container
+learned about the PC-Tool's `.pct6` sound-setup files, for **all 33
+HELIX / BRAX / MATCH models** of PC-Tool 6.05: the container
 (XOR `ATFV6` + zlib, no magic), channel addressing (`ON`, physical vs.
 virtual outputs), the **inverted mute flag** (`MT="1"` = audible), why
 **Solo is destructive** for saved presets, the channel-name enums, filter
 and crossover type codes, bypass flags, gain/delay storage, and what the
-PC-Tool silently changes on a plain load + save.
+PC-Tool silently changes on a plain load + save, plus a per-model reference
+(device id, sample rate, physical output block, virtual channels, FX
+targets, model families) and the FX fields (Augmented Bass Processing,
+RealCenter).
 
 `tools/pct6_tool.py` (stdlib only) reads these files offline:
 
@@ -280,7 +284,7 @@ python3 tools/pct6_tool.py decode setup.pct6 setup.xml
 python3 tools/pct6_tool.py encode setup.xml new.pct6
 ```
 
-`channels` gives the DSP channel numbers for `[channels]` in
+`channels` recognises the model from the file and gives the DSP channel numbers for `[channels]` in
 `dv_measure.ini`; `check-muted` verifies a saved all-muted baseline
 preset. **Never save a preset while a channel is soloed** — the file has
 no solo flag, so the solo's mutes become permanent.
